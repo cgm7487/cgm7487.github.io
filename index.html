@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>台灣歷年蔬菜價格查詢 (含價格走勢圖)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', 'Noto Sans TC', sans-serif; /* 為更好的中文字元渲染添加了 Noto Sans TC */
+        }
+        .table-container {
+            max-height: 300px; /* 稍微減少表格高度以便容納圖表 */
+            overflow-y: auto;
+        }
+        /* Webkit 瀏覽器的自訂滾動條 */
+        .table-container::-webkit-scrollbar {
+            width: 8px;
+        }
+        .table-container::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        .table-container::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 10px;
+        }
+        .table-container::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+        /* 表格的基本樣式以確保可讀性 */
+        th, td {
+            padding: 0.75rem; /* Tailwind 的 p-3 */
+            text-align: left;
+            border-bottom-width: 1px; /* Tailwind 的 border-b */
+        }
+        thead th {
+            position: sticky;
+            top: 0;
+            background-color: #f9fafb; /* Tailwind 的 bg-gray-50 */
+            z-index: 10;
+        }
+        /* 圖表容器樣式 */
+        #chartContainer {
+            margin-top: 2rem; /* Tailwind 的 mt-8 */
+            padding: 1rem; /* Tailwind 的 p-4 */
+            background-color: #f9fafb; /* Tailwind 的 bg-gray-50 */
+            border-radius: 0.5rem; /* Tailwind 的 rounded-lg */
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06); /* Tailwind 的 shadow-sm */
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-green-100 via-lime-100 to-emerald-100 min-h-screen flex flex-col items-center pt-6 sm:pt-10">
+
+    <div class="container mx-auto p-4 sm:p-6 bg-white shadow-xl rounded-lg w-full max-w-4xl">
+        <header class="mb-6 sm:mb-8 text-center">
+            <h1 class="text-3xl sm:text-4xl font-bold text-green-700">台灣歷年蔬菜價格查詢</h1>
+            <p class="text-gray-600 mt-2">查詢各種蔬菜的歷史平均批發價格與走勢圖</p>
+        </header>
+
+        <div class="mb-6 sm:mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div class="flex-grow">
+                <label for="vegetableSelect" class="block text-sm font-medium text-gray-700 mb-1">選擇蔬菜種類：</label>
+                <select id="vegetableSelect" class="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 transition duration-150 ease-in-out">
+                    <option value="">載入蔬菜種類中...</option>
+                </select>
+            </div>
+            <button id="searchButton" class="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-6 rounded-lg shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50 transition duration-150 ease-in-out">
+                查詢價格
+            </button>
+        </div>
+
+        <div id="loadingIndicator" class="text-center my-4 hidden">
+            <p class="text-green-600">載入價格資料中...</p>
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500 mx-auto mt-2"></div>
+        </div>
+        
+        <div id="errorMessage" class="text-center my-4 hidden p-3 bg-red-100 text-red-700 rounded-md">
+            <p id="errorText">資料載入失敗，請稍後再試或檢查網路連線。</p>
+        </div>
+
+        <div id="noDataMessage" class="text-center my-4 hidden">
+            <p class="text-gray-500 text-lg">請選擇一種蔬菜並點擊查詢按鈕。</p>
+        </div>
+
+        <div class="table-container rounded-lg border border-gray-200 shadow-sm">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">日期</th>
+                        <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">蔬菜名稱</th>
+                        <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">市場</th>
+                        <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">平均價格 (NTD/公斤)</th>
+                    </tr>
+                </thead>
+                <tbody id="priceTableBody" class="bg-white divide-y divide-gray-200">
+                    </tbody>
+            </table>
+        </div>
+
+        <div id="chartContainer" class="mt-8 p-4 bg-gray-50 rounded-lg shadow-sm hidden">
+            <h2 class="text-xl font-semibold text-green-700 mb-4 text-center">價格走勢圖</h2>
+            <canvas id="priceChartCanvas"></canvas>
+        </div>
+
+         <p class="text-xs text-gray-500 mt-4 text-center">
+            * 資料來源：農業部資料開放平台。實際價格與完整資料請查閱官方網站。
+        </p>
+         <p class="text-xs text-orange-600 mt-2 text-center hidden" id="corsWarning">
+            <strong>CORS 提示：</strong> 如果資料無法載入，可能是由於瀏覽器的跨來源資源共用 (CORS) 限制。這通常需要伺服器端設定或透過後端代理來解決。
+        </p>
+    </div>
+
+    <script>
+        // 預設的蔬菜列表 (作為 API 呼叫失敗時的備援)
+        const fallbackVegetableList = [
+            '高麗菜', '空心菜', '青江菜', '苦瓜', '絲瓜', '小白菜', '番茄', '洋蔥', '蘿蔔', '胡蘿蔔', '花椰菜', '菠菜'
+        ];
+
+        const vegetableSelect = document.getElementById('vegetableSelect');
+        const priceTableBody = document.getElementById('priceTableBody');
+        const searchButton = document.getElementById('searchButton');
+        const loadingIndicator = document.getElementById('loadingIndicator');
+        const noDataMessage = document.getElementById('noDataMessage');
+        const errorMessage = document.getElementById('errorMessage');
+        const errorText = document.getElementById('errorText');
+        const corsWarning = document.getElementById('corsWarning');
+        const chartContainer = document.getElementById('chartContainer'); // 圖表容器
+        const priceChartCanvas = document.getElementById('priceChartCanvas').getContext('2d'); // 圖表 Canvas
+        let priceChart = null; // 用於存放 Chart.js 實例
+
+        // ** 從 API 獲取不重複的蔬菜名稱 **
+        async function fetchUniqueVegetableNames() {
+            const apiUrl = `https://data.moa.gov.tw/api/v1/AgriProductsTransType/?$format=JSON&$top=500`;
+            console.log(`正在從 API 獲取蔬菜種類列表: ${apiUrl}`);
+            try {
+                const response = await fetch(apiUrl);
+                if (!response.ok) {
+                    throw new Error(`獲取蔬菜種類 API 請求失敗，狀態碼: ${response.status}`);
+                }
+                const responseData = await response.json();
+                if (!responseData || !responseData.Data || !Array.isArray(responseData.Data) || responseData.Data.length === 0) {
+                    console.warn("API 回傳的蔬菜種類資料為空或格式不符預期:", responseData);
+                    return [];
+                }
+                const cropNames = responseData.Data.map(item => item.CropName).filter(name => name); 
+                const uniqueNames = [...new Set(cropNames)]; 
+                return uniqueNames.sort(); 
+            } catch (error) {
+                console.error("獲取蔬菜種類列表時發生錯誤:", error);
+                return []; 
+            }
+        }
+
+        // ** 實際呼叫農業部 API 的函數 (查詢價格用) **
+        async function fetchRealVegetableData(vegetableName) {
+            const apiUrl = `https://data.moa.gov.tw/api/v1/AgriProductsTransType/?$format=JSON&CropName=${encodeURIComponent(vegetableName)}&$top=100`;
+            console.log(`正在從真實 API 獲取 "${vegetableName}" 的價格數據: ${apiUrl}`);
+            try {
+                const response = await fetch(apiUrl);
+                if (!response.ok) {
+                    throw new Error(`API 請求失敗，狀態碼: ${response.status}`);
+                }
+                const responseData = await response.json();
+                if (!responseData || !responseData.Data || !Array.isArray(responseData.Data) || responseData.Data.length === 0) {
+                    console.log("API 回傳的價格資料為空或格式不符預期:", responseData);
+                    return [];
+                }
+                return responseData.Data.map(item => ({
+                    date: item.TransDate ? item.TransDate.split('T')[0] : 'N/A',
+                    vegetable: item.CropName || vegetableName,
+                    market: item.MarketName || 'N/A',
+                    price_per_kg: item.Avg_Price !== null && item.Avg_Price !== undefined ? parseFloat(item.Avg_Price) : null // 確保價格是數字
+                })).filter(item => item.price_per_kg !== null); // 過濾掉沒有價格的數據
+            } catch (error) {
+                console.error("價格 API 呼叫錯誤:", error);
+                if (error instanceof TypeError && error.message.toLowerCase().includes('failed to fetch')) {
+                     corsWarning.classList.remove('hidden');
+                }
+                throw error;
+            }
+        }
+
+        // ** 新增：渲染價格走勢圖函式 **
+        function renderPriceChart(data, vegetableName) {
+            if (priceChart) {
+                priceChart.destroy(); // 如果已有圖表實例，先銷毀它
+            }
+
+            // 準備圖表數據
+            // 我們需要將數據按日期排序，以便圖表正確顯示趨勢
+            const sortedData = [...data].sort((a, b) => new Date(a.date) - new Date(b.date));
+            
+            const labels = sortedData.map(item => item.date);
+            const prices = sortedData.map(item => item.price_per_kg);
+
+            priceChart = new Chart(priceChartCanvas, {
+                type: 'line', // 折線圖
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: `${vegetableName} 平均價格 (NTD/公斤)`,
+                        data: prices,
+                        borderColor: 'rgb(34, 197, 94)', // Green-500
+                        backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                        tension: 0.1, // 線條的平滑度
+                        fill: true,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true, // 讓圖表自行調整大小，但也可以設為 false 並手動控制
+                    scales: {
+                        y: {
+                            beginAtZero: false, // Y 軸不一定從 0 開始，根據數據調整
+                            title: {
+                                display: true,
+                                text: '平均價格 (NTD/公斤)'
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: '日期'
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                        }
+                    }
+                }
+            });
+            chartContainer.classList.remove('hidden'); // 顯示圖表容器
+        }
+
+        // ** 清除圖表函式 **
+        function clearChart() {
+            if (priceChart) {
+                priceChart.destroy();
+                priceChart = null;
+            }
+            chartContainer.classList.add('hidden');
+        }
+
+
+        // ** 填充蔬菜選擇下拉選單 **
+        async function populateVegetableSelect() {
+            let vegetableNames = await fetchUniqueVegetableNames();
+            if (vegetableNames.length === 0) {
+                console.warn("無法從 API 獲取蔬菜種類，將使用備援列表。");
+                vegetableNames = [...fallbackVegetableList].sort(); 
+            }
+            vegetableSelect.innerHTML = '<option value="">請選擇一種蔬菜</option>'; 
+            vegetableNames.forEach(name => {
+                const option = document.createElement('option');
+                option.value = name;
+                option.textContent = name;
+                vegetableSelect.appendChild(option);
+            });
+        }
+
+        // ** 顯示價格數據到表格與圖表 **
+        async function displayPrices(vegetableName) {
+            priceTableBody.innerHTML = ''; 
+            clearChart(); // 清除舊圖表
+            loadingIndicator.classList.remove('hidden'); 
+            noDataMessage.classList.add('hidden'); 
+            errorMessage.classList.add('hidden'); 
+            corsWarning.classList.add('hidden'); 
+            errorText.textContent = '資料載入失敗，請稍後再試或檢查網路連線。'; 
+
+            if (!vegetableName) {
+                noDataMessage.classList.remove('hidden');
+                loadingIndicator.classList.add('hidden');
+                return;
+            }
+
+            try {
+                const fetchedData = await fetchRealVegetableData(vegetableName);
+                if (fetchedData.length === 0) {
+                     priceTableBody.innerHTML = `<tr><td colspan="4" class="text-center py-4 text-gray-500">找不到 ${vegetableName} 的價格數據，或該作物近期無交易資料。</td></tr>`;
+                     chartContainer.classList.add('hidden'); // 確保沒有數據時圖表容器也隱藏
+                } else {
+                    // 填充表格
+                    const tableSortedData = [...fetchedData].sort((a, b) => new Date(b.date) - new Date(a.date)); // 表格數據按日期降序
+                    tableSortedData.forEach(item => {
+                        const row = priceTableBody.insertRow();
+                        row.className = 'hover:bg-green-50 transition-colors duration-150';
+                        row.insertCell().textContent = item.date;
+                        row.insertCell().textContent = item.vegetable;
+                        row.insertCell().textContent = item.market;
+                        const priceCell = row.insertCell();
+                        priceCell.textContent = item.price_per_kg !== null ? item.price_per_kg.toFixed(2) : 'N/A'; // 價格顯示到小數點後兩位
+                        priceCell.classList.add('text-right', 'pr-6'); 
+                    });
+                    // 渲染圖表 (圖表需要數據按日期升序)
+                    renderPriceChart(fetchedData, vegetableName);
+                }
+            } catch (error) {
+                console.error("顯示價格時發生錯誤:", error);
+                if (error.message.includes("API 請求失敗")) {
+                    errorText.textContent = `資料載入失敗: ${error.message}。請確認 API 是否正常運作。`;
+                } else if (corsWarning.classList.contains('hidden')) { 
+                     errorText.textContent = '資料載入時發生未知錯誤，請檢查主控台以獲取更多資訊。';
+                }
+                errorMessage.classList.remove('hidden'); 
+            } finally {
+                loadingIndicator.classList.add('hidden'); 
+            }
+        }
+
+        // 事件監聽器
+        searchButton.addEventListener('click', () => {
+            const selectedVegetable = vegetableSelect.value;
+            displayPrices(selectedVegetable); 
+        });
+
+        // 初始化
+        async function initializeApp() {
+            await populateVegetableSelect(); 
+            noDataMessage.classList.remove('hidden'); 
+            if (vegetableSelect.options.length > 1) { 
+                //
+            }
+        }
+
+        initializeApp(); 
+    </script>
+
+</body>
+</html>
